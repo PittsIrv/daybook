@@ -1,0 +1,15 @@
+.DS_Store
+__pycache__/
+*.pyc
+.daybook*/
+dist/
+release-source/
+dashboard/data/
+dashboard/preview*.jpg
+shortcuts/source/
+shortcuts/build/
+shortcuts/diagnostics/
+shortcuts/release/
+*.shortcut
+shortcuts/build_hour_test.py
+.daybook-release-staging

@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "report_date": "2026-10-21",
+  "captured_at": "2026-10-22T10:00:00-04:00",
+  "query_period": "yesterday",
+  "device_scope": "all_devices",
+  "collector_device": "Synthetic demo",
+  "measurement": "cumulative_daily_usage",
+  "raw_activity_text": "Brawl Stars (30m)\nInstagram (50m)\nGoogle Chrome (2h 15m)\nChatGPT (40m)\nCalendar (10m)",
+  "synthetic": true
+}
