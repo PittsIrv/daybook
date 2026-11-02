@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import threading
+from classification import normalize_labels
 
 
 def write_json(path, value):
@@ -38,7 +39,9 @@ class Runtime:
             return default
 
     def preferences(self):
-        return self.read('preferences.json', {'goal':'understand', 'labels':{}, 'feedback':{}})
+        prefs = self.read('preferences.json', {'labels':{}})
+        prefs['labels'] = normalize_labels(prefs.get('labels', {}))
+        return prefs
 
     def status(self):
         return {**self.read('collection.json', {}), 'enabled':self.auto,

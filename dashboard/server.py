@@ -12,8 +12,10 @@ import threading
 from urllib.parse import urlsplit
 import os
 import time
-from insights import review, markdown, DEFAULTS, CATEGORIES, GOALS
+from classification import PURPOSES, daily_markdown
 from runtime import Runtime, write_json
+from integrations import calendar_sync
+from read_model import build_data
 
 ROOT = Path(__file__).resolve().parent
 SNAPSHOTS = Path.home() / 'Library/Mobile Documents/iCloud~is~workflow~my~workflows/Documents/ScreenTime/snapshots'
@@ -132,25 +134,36 @@ class Handler(BaseHTTPRequestHandler):
         if (not self.valid_host() or self.headers.get('Origin') != expected_origin
                 or self.headers.get('X-Daybook-Action') != 'collect'):
             return self.reply(403, {'error':'Request must come from this local dashboard'})
+        if self.path == '/api/calendar/connect':
+            if DEMO:
+                return self.reply(400, {'error':'Calendar connection is disabled in the fictional demo.'})
+            ok, message = calendar_sync(RUNTIME.folder, connect=True)
+            return self.reply(200 if ok else 400, {'message':message, 'error':None if ok else message})
+        if self.path == '/api/exporter/retry':
+            if DEMO:
+                return self.reply(400, {'error':'Exporter is disabled in the fictional demo.'})
+            result = subprocess.run(['/bin/launchctl','kickstart','-k',f'gui/{os.getuid()}/io.daybook.exporter'],
+                                    capture_output=True,text=True,timeout=10)
+            if result.returncode:
+                return self.reply(400, {'error':result.stderr.strip() or 'Install the exporter agent first.'})
+            return self.reply(200, {'message':'Exporter sync started. Refresh files in a few moments to check the result.'})
         if self.path == '/api/preferences':
             try:
                 length = int(self.headers.get('Content-Length', '0'))
                 if not 0 < length <= 65536:
                     raise ValueError('Invalid settings size')
                 value = json.loads(self.rfile.read(length))
-                if not isinstance(value, dict) or value.get('goal') not in GOALS:
-                    raise ValueError('Unknown goal')
-                labels, feedback = value.get('labels', {}), value.get('feedback', {})
-                if not isinstance(labels, dict) or not isinstance(feedback, dict):
+                if not isinstance(value, dict):
                     raise ValueError('Invalid settings')
-                if len(labels)>500 or len(feedback)>500:
+                labels = value.get('labels', {})
+                if not isinstance(labels, dict):
+                    raise ValueError('Invalid labels')
+                if len(labels)>500:
                     raise ValueError('Too many settings')
-                if any(not isinstance(k,str) or len(k)>300 or v not in CATEGORIES for k,v in labels.items()):
+                if any(not isinstance(k,str) or not k or len(k)>300 or v not in PURPOSES for k,v in labels.items()):
                     raise ValueError('Invalid category')
-                if any(not isinstance(k,str) or len(k)>300 or v not in ('useful','hide') for k,v in feedback.items()):
-                    raise ValueError('Invalid feedback')
                 with RUNTIME.settings_lock:
-                    write_json(RUNTIME.folder / 'preferences.json', {'goal':value['goal'], 'labels':labels, 'feedback':feedback})
+                    write_json(RUNTIME.folder / 'preferences.json', {**RUNTIME.preferences(), 'labels':labels})
                 data = payload()
                 save_reports(data)
                 return self.reply(200, data)
@@ -169,27 +182,19 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def payload():
-    data = load_data()
-    prefs = RUNTIME.preferences()
-    end = date.fromisoformat(data['yesterday'])
-    # A stable Monday–Sunday review, refreshed as late exports arrive.
-    end -= timedelta(days=(end.weekday()+1)%7)
-    scopes = sorted({d['device_scope'] for d in data['days']}) or ['all_devices']
-    data.update(preferences=prefs, defaults=DEFAULTS, demo=DEMO, collection=RUNTIME.status(),
-                reviews={scope:review(data['days'], end, scope, prefs) for scope in scopes})
-    return data
+    return build_data(load_data(), RUNTIME, demo=DEMO)
 
 
 def save_reports(data=None):
     data = payload() if data is None else data
-    for scope, report in data['reviews'].items():
+    for day in data['days']:
         # Stable safe scope digest avoids filenames derived from imported text.
         import hashlib
-        suffix = hashlib.sha256(scope.encode()).hexdigest()[:10]
+        suffix = hashlib.sha256(day['device_scope'].encode()).hexdigest()[:10]
         folder = RUNTIME.folder / 'reports'
         folder.mkdir(parents=True, exist_ok=True)
-        path = folder / (report['end'] + '-' + suffix + '.md')
-        content = markdown(report)
+        path = folder / ('daily-' + day['date'] + '-' + suffix + '.md')
+        content = daily_markdown(day, data['preferences']['labels'])
         if not path.exists() or path.read_text() != content:
             path.write_text(content)
 
@@ -198,6 +203,7 @@ def automatic_worker():
     while True:
         try:
             RUNTIME.collect(automatic=True)
+            calendar_sync(RUNTIME.folder)
             save_reports()
         except Exception as exc:
             # Keep the loop alive; surface failures rather than silently pretending collection worked.

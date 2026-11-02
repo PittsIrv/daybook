@@ -10,12 +10,12 @@ import zipfile
 ROOT=Path(__file__).resolve().parents[1]
 VERSION='0.1.0-alpha'
 FILES=['README.md','LICENSE','.gitignore','.github/workflows/checks.yml',
-       'dashboard/server.py','dashboard/runtime.py','dashboard/insights.py','dashboard/manage.py',
+       'dashboard/server.py','dashboard/read_model.py','dashboard/agent_api.py','dashboard/mcp_server.py','dashboard/mcp_config.py','dashboard/runtime.py','dashboard/insights.py','dashboard/classification.py','dashboard/activity.py','dashboard/sources.py','dashboard/integrations.py','dashboard/CalendarBridge.swift','dashboard/demo_sessions.py','dashboard/manage.py',
        'dashboard/README.md','dashboard/doctor.py','dashboard/launch.py','dashboard/Start Daybook.command','dashboard/Start Demo.command',
        'dashboard/static/index.html','dashboard/static/app.js','dashboard/static/style.css',
        'shortcuts/build_shortcuts.py','shortcuts/README.md',
        'scripts/make_demo.py','scripts/package_release.py',
-       'docs/RELEASING.md','docs/VERIFICATION.md','docs/demo.jpg']
+       'docs/RELEASING.md','docs/INTEGRATIONS.md','docs/MCP.md','docs/VERIFICATION.md','docs/demo.jpg','docs/daily-demo.png']
 
 
 def public_files():

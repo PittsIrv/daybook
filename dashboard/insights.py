@@ -36,6 +36,67 @@ def minutes(seconds):
     return f'{round(seconds / 60)} min'
 
 
+def longer_patterns(eligible, end, labels, goal):
+    """Two recent complete weeks against four earlier complete weeks.
+
+    Both magnitude and day-by-day agreement must hold. A single unusual day
+    cannot manufacture either maintained progress or a rebound.
+    """
+    dates = [end - timedelta(days=41-i) for i in range(42)]
+    if any(d not in eligible for d in dates):
+        return []
+    values = [metrics(eligible[d], labels)['Entertainment'] for d in dates]
+    base = [median(values[w::7][:4]) for w in range(7)]
+    previous, current = values[28:35], values[35:42]
+    before, prior, now = mean(base), mean(previous), mean(current)
+    threshold = max(900, before * .2)
+    was_lower = before-prior >= threshold and sum(p < b for p,b in zip(previous,base)) >= 5
+    if before < 600 or not was_lower:
+        return []
+    evidence = {'baseline_days':28, 'recent_days':14,
+                'baseline_seconds_per_day':round(before),
+                'previous_seconds_per_day':round(prior), 'current_seconds_per_day':round(now)}
+    if before-now >= threshold and sum(c < b for c,b in zip(current,base)) >= 5:
+        return [{'id':'sustained:Entertainment:down', 'kind':'sustained',
+                 'title':'Lower entertainment use has lasted two weeks',
+                 'detail':f'The last two weeks averaged {minutes(prior)} and {minutes(now)}/day, versus a {minutes(before)}/day baseline from matching-weekday medians across four earlier weeks. At least five days in each week were below their matching weekday baseline.',
+                 'evidence':evidence, 'score':130,
+                 'suggestion':'This supports your goal. Keep the current routine for another week instead of automatically tightening the target.' if goal=='less_entertainment' else None}]
+    if now-prior >= max(900, (before-prior)*.75) and sum(c > p for c,p in zip(current,previous)) >= 5:
+        return [{'id':'rebound:Entertainment', 'kind':'rebound',
+                 'title':'Entertainment rose again after a lower week',
+                 'detail':f'The earlier baseline from matching-weekday medians was {minutes(before)}/day. Last week averaged {minutes(prior)}; this week averaged {minutes(now)}. At least five matching weekdays increased. The records do not explain why.',
+                 'evidence':evidence, 'score':135,
+                 'suggestion':'Try a smaller change you can maintain, using one combined entertainment allowance. One higher week does not erase the earlier reduction.' if goal=='less_entertainment' else None}]
+    return []
+
+
+def budget_trial(current, recent, base_by_weekday):
+    """A modest optional target, with unusual high days capped for sizing only.
+
+    This is reported activity, never a claim about reclaimed elapsed time.
+    Targets are suggestions, not evidence of consent or compliance.
+    """
+    before = mean(mean(v['Entertainment'] for v in base_by_weekday[w]) for w in range(7))
+    now = mean(v['Entertainment'] for v in current)
+    lower_days = sum(v['Entertainment'] < mean(b['Entertainment'] for b in base_by_weekday[date.fromisoformat(d['date']).weekday()]) for d,v in zip(recent,current))
+    # Do not keep ratcheting down after a substantial, consistent reduction.
+    if before-now >= max(900, before*.2) and lower_days >= 5:
+        return None
+    reference = sum(min(v['Entertainment'], median(b['Entertainment'] for b in base_by_weekday[date.fromisoformat(d['date']).weekday()])) for d,v in zip(recent,current))
+    if reference < 7*1800:
+        return None
+    reduction = min(reference*.1, 7*900)
+    target = round((reference-reduction)/300)*300
+    return {'id':'trial:Entertainment', 'kind':'trial',
+            'title':f'A small next-week trial: {minutes(target)} of entertainment',
+            'detail':f'Your reference week is {minutes(reference)} of reported entertainment activity. Try roughly {minutes(reference-target)} less over the whole week. The reference caps each recent day at its earlier matching-weekday median, so a spike does not raise your suggested budget.',
+            'evidence':{'reference_seconds_per_week':round(reference), 'target_seconds_per_week':target,
+                        'proposed_reduction_seconds_per_week':round(reference-target), 'recent_days':7},
+            'suggestion':'If this suits your goal, use one allowance across gaming, social, video and leisure. Next week’s report will show the new totals. This optional suggestion does not set app limits or guarantee time saved.',
+            'score':100}
+
+
 def review(days, end, scope, preferences=None):
     """Fixed calendar windows; no partial days, scope mixing or missing-as-zero."""
     prefs = preferences or {}
@@ -115,6 +176,11 @@ def review(days, end, scope, preferences=None):
                     'detail': f'Median {minutes(medians[peak])}, compared with {minutes(other)} for the other weekday medians. Based on {len(by_weekday[peak])} {weekday}s; at least four observations of every weekday.',
                     'evidence': {'weekday_samples':len(by_weekday[peak]), 'window_days':56},
                     'suggestion': f'If you want a change, try a small allowance specifically on {weekday}s.' if goal == 'less_entertainment' else None, 'score':60})
+        candidates.extend(longer_patterns(eligible, end, labels, goal))
+        if goal == 'less_entertainment':
+            trial = budget_trial(current, recent, base_by_weekday)
+            if trial:
+                candidates.append(trial)
     feedback = prefs.get('feedback', {})
     for finding in candidates:
         finding['score'] += 15 if feedback.get(finding['id']) == 'useful' else 0
@@ -122,6 +188,8 @@ def review(days, end, scope, preferences=None):
     # One substitution explanation is more useful than two redundant category changes.
     if any(f['kind']=='substitution' for f in candidates):
         candidates = [f for f in candidates if f['kind']!='change' or f['id'].split(':')[1] not in ENTERTAINMENT]
+    if any(f['kind'] in ('sustained','rebound') for f in candidates):
+        candidates = [f for f in candidates if f['id'] not in ('change:Entertainment:up','change:Entertainment:down')]
     result['findings'] = sorted(candidates, key=lambda f:(-f['score'], f['id']))[:3]
     if ready and not result['findings']:
         result['message'] = 'No substantial new pattern to highlight. Your habits may be steady, or findings may be hidden. Collection continues quietly.'

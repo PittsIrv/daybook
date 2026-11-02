@@ -79,4 +79,64 @@ class InsightsTests(unittest.TestCase):
         r=review(days[-21:],END,'all_devices')
         self.assertFalse(r['findings'])
 
+    def entertainment_history(self, previous, current):
+        days=history()
+        for i,d in enumerate(days):
+            seconds=current if i>=49 else previous if i>=42 else 3600
+            d['entries']=[{'name':'Brawl Stars','seconds':seconds}]
+        return days
+
+    def test_two_weeks_of_progress_do_not_trigger_a_tighter_budget(self):
+        r=review(self.entertainment_history(1800,1800),END,'all_devices',{'goal':'less_entertainment'})
+        sustained=next(f for f in r['findings'] if f['kind']=='sustained')
+        self.assertEqual(sustained['evidence']['baseline_seconds_per_day'],3600)
+        self.assertTrue(sustained['suggestion'])
+        self.assertFalse(any(f['kind']=='trial' for f in r['findings']))
+        self.assertFalse(any(f['id']=='change:Entertainment:down' for f in r['findings']))
+
+    def test_rebound_requires_consistent_matching_day_increases(self):
+        days=self.entertainment_history(1800,3600)
+        r=review(days,END,'all_devices')
+        self.assertTrue(any(f['kind']=='rebound' for f in r['findings']))
+        for d in days[-7:]:d['entries'][0]['seconds']=1800
+        days[-1]['entries'][0]['seconds']=7*3600
+        r=review(days,END,'all_devices')
+        self.assertFalse(any(f['kind']=='rebound' for f in r['findings']))
+
+    def test_longer_patterns_require_all_six_weeks(self):
+        days=self.entertainment_history(1800,1800)
+        days.pop(-40)  # Outside the shorter comparison, but inside the six-week window.
+        r=review(days,END,'all_devices')
+        self.assertTrue(r['ready'])
+        self.assertFalse(any(f['kind']=='sustained' for f in r['findings']))
+
+    def test_budget_is_optional_goal_specific_and_sized_from_history(self):
+        days=self.entertainment_history(3600,3600)
+        for goal in ('understand','more_learning'):
+            r=review(days,END,'all_devices',{'goal':goal})
+            self.assertFalse(any(f['kind']=='trial' for f in r['findings']))
+        r=review(days,END,'all_devices',{'goal':'less_entertainment'})
+        trial=next(f for f in r['findings'] if f['kind']=='trial')
+        self.assertEqual(trial['evidence']['reference_seconds_per_week'],7*3600)
+        self.assertAlmostEqual(trial['evidence']['target_seconds_per_week'],7*3600*.9,delta=150)
+        days[-1]['entries'][0]['seconds']=12*3600
+        spike=review(days,END,'all_devices',{'goal':'less_entertainment'})
+        self.assertEqual(next(f for f in spike['findings'] if f['kind']=='trial')['evidence'],trial['evidence'])
+
+    def test_budget_does_not_treat_mixed_browsing_as_entertainment(self):
+        days=self.entertainment_history(3600,3600)
+        r=review(days,END,'all_devices',{'goal':'less_entertainment','labels':{'Brawl Stars':'Mixed'}})
+        self.assertFalse(r['findings'])
+
+    def test_hidden_budget_stays_hidden(self):
+        r=review(self.entertainment_history(3600,3600),END,'all_devices',
+                 {'goal':'less_entertainment','feedback':{'trial:Entertainment':'hide'}})
+        self.assertFalse(r['findings'])
+
+    def test_one_unusual_baseline_week_does_not_invent_sustained_progress(self):
+        days=self.entertainment_history(3600,3600)
+        for d in days[14:21]:d['entries'][0]['seconds']=6*3600
+        r=review(days,END,'all_devices')
+        self.assertFalse(any(f['kind']=='sustained' for f in r['findings']))
+
 if __name__=='__main__':unittest.main()

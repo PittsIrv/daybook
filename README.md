@@ -1,12 +1,24 @@
 # Daybook
 
-A private weekly review of your screen habits, without an API key.
+Your daily app time, counted automatically and available to your own agent.
 
-Daybook imports daily Apple Screen Time exports, learns your routine, and highlights a few substantial changes. It uses transparent calculations and carefully written suggestions. No account, model, subscription, telemetry or Full Disk Access is required by Daybook.
+Daybook imports Apple Screen Time exports and shows hours and minutes per app, with three purposes: **Focus** (work and study), **Entertainment**, and **Other** (life activities such as food and travel). Label an app once; its purpose is remembered for past and future days. Newly seen names appear in a setup queue. No daily diary, AI model, API key, subscription, telemetry or Full Disk Access is required by Daybook.
 
-**Developer alpha · macOS companion · daily totals.** This is an independent project, not affiliated with Apple. The collector depends on a Shortcuts action that may differ across OS versions; availability and unattended execution must be checked on each device.
+**The source checkout has the new daily-totals, comparison, timeline and local MCP experience. The published v0.1.0-alpha ZIP still contains the earlier weekly-review interface.**
 
-![Weekly review with fictional data](docs/demo.jpg)
+**Developer alpha · macOS companion · daily totals and optional session imports.** This is an independent project, not affiliated with Apple. The collector depends on a Shortcuts action that may differ across OS versions; availability and unattended execution must be checked on each device.
+
+![Daily totals with fictional data](docs/daily-demo.png)
+
+## Use Daybook through your agent
+
+The source checkout includes a **read-only local MCP server**. Your agent can query daily app time, saved purposes, comparisons, and hourly sessions when available. Calendar event titles are opt-in. It reads the same records as the dashboard and does not require a browser or an HTTP listener. The background collectors remain responsible for importing data.
+
+```bash
+python3 dashboard/mcp_config.py
+```
+
+Add the printed command and arguments to a local agent that supports stdio MCP. The launcher uses uv to manage Python and the optional official MCP SDK. See the [MCP setup guide](docs/MCP.md) for one-time installation, tool descriptions, privacy, sleep behavior, and what still requires the background service. No agent settings are changed automatically. The old release ZIP does not include this interface yet.
 
 ## Download and compatibility
 
@@ -67,41 +79,54 @@ Once running, Daybook checks every 15 minutes and collects yesterday after 8 AM 
 
 No iPhone automation is installed by this project. iPhone exports can sync through iCloud, but locked-phone execution and automation setup need separate verification. The Mac Shortcut may include shared Apple-device activity when Apple Screen Time sharing and the selected device scope provide it; Daybook cannot guarantee timely or complete iCloud synchronization.
 
-## What the review does
+## Daily totals and one-time labels
 
-- Compares the last finished Monday–Sunday week with the preceding four weeks, matching weekdays.
-- Requires seven eligible recent days and at least three examples of every weekday in the baseline. Missing days are never filled with zeros.
-- Highlights category changes of at least 15 minutes/day and 20%, with a baseline of at least 10 minutes/day and at least five recent days moving in the same direction.
-- Detects opposing entertainment-category changes of at least 15 minutes/day while combined entertainment stays within 10 minutes/day or 10% of baseline. This describes a shift, not its cause.
-- Finds unusually high entertainment weekdays using up to eight weeks, at least four observations of every weekday, and a median difference of at least 30 minutes and 25%.
-- Shows at most three findings. **Useful** raises a pattern's priority; **Hide this pattern** suppresses it until reset.
-- Applies a few conservative app defaults. Browsers, YouTube and general-purpose AI tools stay Mixed. Corrected labels apply consistently to all dates.
-- Offers optional goals. Advice for reducing entertainment is shown only when that goal is selected. Focus labels are not evidence of learning or completed work.
+- The main view shows total reported activity, Focus, Entertainment and Other in hours and minutes, immediately after the first export. It does not need several weeks of history.
+- The app breakdown shows time and share for apps or websites with more than five minutes, with an optional category dropdown. The 7/30-day chart shows daily totals.
+- Each newly observed name appears in **App labels** until you choose its purpose. The queue is shown when opening or refreshing the dashboard; it is not a native notification. Collection continues without waiting for labels.
+- Labels persist on the Mac and apply across dates and device scopes. They never require daily confirmation. Changing a label recalculates past and future breakdowns.
+- Focus includes work and study. Other stays separate; Daybook never invents a work/leisure ratio for a browser.
+- Untagged is a temporary setup state, not a fourth purpose. Its time remains in the total and is displayed explicitly until assigned.
+- Suggested labels are optional: known games/social/streaming apps suggest Entertainment, selected code editors suggest Focus, and other names suggest Other. Nothing is applied without choosing a label or confirming the displayed suggestions.
+- Explicit old Gaming/Social/Video/Leisure labels migrate to Entertainment, Utility and Mixed to Other, and Focus remains unchanged. Previously automatic defaults do not count as user confirmation.
+- CSV exports and saved daily Markdown reports use the same labels. Reports are refreshed automatically while the service runs. Historical weekly reports are retained; new reports contain daily quantities rather than advice or experiments.
 
-These are transparent heuristics, not validated psychological measures or statistical significance tests. Early users will usually see **Still learning** for several weeks. A quiet report is better than an invented insight.
+The active dashboard does not invoke the legacy weekly-insight engine. No goals, experiments, AI coaching or daily reflection tasks are part of the current experience.
 
-Weekly Markdown reviews are written automatically while the service runs. This alpha does not send email or native notifications. Reviewing the dashboard or opening a saved report is optional; collecting does not require either.
+### Mac application distribution
+
+A bundled Mac app can be developed and tested without paid Apple Developer Program membership. A publisher needs membership for Developer ID signing and notarization of a public download; end users do not need developer accounts. Apple lists the program at US$99/year (local pricing may vary). A notarized app can still be distributed through GitHub, without an App Store listing. See [Apple's Developer ID guidance](https://developer.apple.com/developer-id/) and [program enrollment](https://developer.apple.com/programs/enroll/).
+
+The current alpha is still a Python source distribution. A bundled runtime, guided setup and application signing are planned, not included in this release.
+
+## Hourly activity, calendar and comparisons
+
+See the [integration setup guide](docs/INTEGRATIONS.md). The optional exporter requires Full Disk Access; Daybook reads only its exported SQLite database. It can import historical sessions still retained by Apple, including phone records synced to the Mac. It does not need an hourly iPhone automation. Apple sync delays and retention limits still apply.
+
+The hourly view and session log show activity over five minutes. Short activity remains in daily totals and CSV. Calendar events are shown separately as scheduled time, never added to measured activity. Google calendars can sync through Apple Calendar using the optional local EventKit helper. Choose calendars once; while Daybook runs, it refreshes them every 15 minutes.
+
+Comparisons show the selected day versus the previous day, the average of the previous three calendar days, and the same weekday last week. They stay within one device/source scope. Missing baselines are not zero; partial days do not produce whole-day change claims.
 
 ## Where the files live
 
 - Exports: **iCloud Drive → Shortcuts → ScreenTime → snapshots**. The `.txt` files contain JSON.
 - Mac input: `~/Library/Mobile Documents/iCloud~is~workflow~my~workflows/Documents/ScreenTime/snapshots`.
 - Preferences and collection status: `~/Library/Application Support/Daybook/`.
-- Weekly reviews: `~/Library/Application Support/Daybook/reports/` (one file per week and device scope).
+- Daily reports: `~/Library/Application Support/Daybook/reports/daily-<date>-<scope-hash>.md`. Earlier weekly reports are retained.
 - Service logs: `~/Library/Logs/Daybook/`.
 - Optional local exports: `dashboard/data/` (never include these in a release).
 
-Analysis stays local. iCloud still handles export synchronization under your Apple account. Nothing in the dashboard sends activity to an AI provider. The server binds only to loopback; don't expose its port publicly.
+Analysis stays local. iCloud still handles export synchronization under your Apple account. The dashboard sends no activity to an AI provider. When you connect the optional MCP, your chosen agent may send tool results to its own model provider according to its settings. The server binds only to loopback; don't expose its port publicly.
 
 ## Limits that matter
 
-Daily totals cannot reveal precise sessions, late-night use, context switches, intent within Chrome or actual productivity. Exported app and website rows can overlap, and devices can be used simultaneously. Reported activity is not unique elapsed time. Even a completed-day query can change after iCloud catches up.
+Daily Shortcut totals cannot reveal sessions or hours. The optional exporter supplies app-session times, but does not establish intent within Chrome or actual productivity. When a browser is present, website rows from Shortcuts are detail-only and excluded from totals. Devices and different apps can still overlap. Reported activity is not unique elapsed time. Even a completed-day query can change after iCloud catches up.
 
 Empty exports and exports with unparsed rows are excluded from insights rather than treated as zero. English and Chinese duration formats are supported. Changing the device selection under the same `configured_device` scope mixes histories; start a fresh data folder or change the scope metadata consistently if you change what is being measured.
 
 ## Development
 
-Python standard library and plain HTML/CSS/JavaScript; no runtime package installation.
+The core uses Python standard library and plain HTML/CSS/JavaScript. Optional Screen Time Exporter and the native calendar bridge have separate setup requirements.
 
 ```bash
 python3 -m unittest discover -s dashboard/tests -v
@@ -113,6 +138,6 @@ Use `--no-auto` to inspect real exports without invoking Shortcuts, `--data-dir 
 
 ## Related projects
 
-[ScreenTimeAnalyzer](https://github.com/fildl/ScreenTimeAnalyzer) also uses Shortcut snapshots and a local dashboard. [ActivityWatch](https://activitywatch.net/) provides extensible local automatic tracking. [Screen Time Exporter](https://github.com/nichtlegacy/screentime) offers richer Apple-store imports with Full Disk Access. Daybook focuses on a small, inspectable daily workflow and low-maintenance weekly reviews. No code from these projects is bundled.
+[ScreenTimeAnalyzer](https://github.com/fildl/ScreenTimeAnalyzer) also uses Shortcut snapshots and a local dashboard. [ActivityWatch](https://activitywatch.net/) provides extensible local automatic tracking. [Screen Time Exporter](https://github.com/nichtlegacy/screentime) offers richer Apple-store imports with Full Disk Access. Daybook focuses on automatic daily quantities and one-time app-purpose setup. The optional Screen Time Exporter is installed separately; its code is not bundled in Daybook.
 
 MIT licensed. See [LICENSE](LICENSE).
